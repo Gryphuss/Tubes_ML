@@ -14,7 +14,6 @@ class FFNN:
     def __init__(self, layer_sizes, activations, loss='mse', 
                      weight_initializer='uniform', weight_init_params=None,
                      regularizer=None, use_rms_norm=False):
-            return 0
             """
             Initialize the network
             
@@ -42,7 +41,33 @@ class FFNN:
             use_rms_norm : bool
                 Whether to use RMS normalization
             """
-    
+            
+            if len(layer_sizes) < 2:
+                raise ValueError("Network must have at least 2 layers (input and output)")
+        
+            if len(activations) != len(layer_sizes) - 1:
+                raise ValueError("Number of activations must be one less than number of layers")
+            
+            self.layer_sizes = layer_sizes
+            self.n_layers = len(layer_sizes)
+            
+            self.activations = []
+            for act in activations:
+                if isinstance(act,str):
+                    self.activations.append(get_activation(act))
+                else:
+                    self.activations.append(act)
+            
+            if isinstance(loss,str):
+                self.loss = get_loss(loss)
+            else:
+                self.loss = loss
+            
+            if isinstance(weight_initializer,str):
+                self.initializer = get_initializer(weight_initializer, **weight_init_params)
+            else:
+                self.initializer = weight_initializer
+            
     def _initialize_weights(self):
             return 0            
     
