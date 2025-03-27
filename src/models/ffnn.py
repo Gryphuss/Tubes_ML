@@ -108,6 +108,7 @@ class FFNN:
             # if rms norm
             if self.use_rms_norm:
                 self.normalizers[i].initialize(bias_shape)
+
             
     def forward(self, X):
         """
@@ -143,8 +144,31 @@ class FFNN:
             output = self.activations[i].activate(net)
             self.post_activations.append(output)
         
+        # print("POST ACTIVATION: ")
+        # for i in range(self.n_layers):
+        #     print(f"Layer: {i}",self.post_activations[i].shape)
+        # print("PRE ACTIVATION: ")
+        # for i in range(self.n_layers-1):
+        #     print(f"Layer: {i}",self.pre_activations[i].shape)
         return self.post_activations[-1]
             
+    def _mult_activation_derivative(self, temp_delta, y_pred, activation):
+        # Bukan softmax, kali biasa (multiply element wise)
+        if (activation.name() != "Softmax"):
+            # print("Loss gradient: ",temp_delta.shape, "Y pred activation: ", activation.derivative(y_pred).shape)
+            return temp_delta * activation.derivative(y_pred)
+
+        # If softmax, we perform dot multiplication because Jacobian is a matrix for each row of temp_delta
+        jacobian = activation.derivative(y_pred)
+        
+        new_delta = np.zeros_like(temp_delta)
+        
+        for i in range(temp_delta.shape[0]):
+            # print("temp_delta[i]: ",temp_delta[i].shape, "Jacobian i: ", jacobian[i].shape)
+            new_delta[i] = np.dot(temp_delta[i],jacobian[i])
+            # print("new_delta[i]: ",new_delta[i].shape)
+        
+        return new_delta
     
     def backward(self, y_true):
         """
@@ -170,7 +194,12 @@ class FFNN:
         
         batch_size = y_true.shape[0]
         # Error term output layer, shape: (n_sample,output)
-        delta = self.loss.derivative(y_true, y_pred)
+        
+        is_special_case = (self.loss.name() == "Categorial Cross-Entropy" and self.activations[-1].name() == "Softmax") or (self.loss.name() == "Binary Cross-Entropy" and self.activations[-1].name() == "Sigmoid")
+        if is_special_case:
+            delta = y_pred - y_true
+        else:
+            delta = self._mult_activation_derivative(self.loss.derivative(y_true, y_pred),y_pred,self.activations[-1])
         
         # Mulai dari hidden layer terakhir
         for i in range(self.n_layers - 2, -1, -1):
@@ -191,9 +220,11 @@ class FFNN:
                 self.weight_gradients[i] += reg_grad
             
             if i>0:
+                print("Sini bentuk deriv shape: ",self.activations[i-1].derivative(self.pre_activations[i-1]).shape)
                 delta = delta.dot(self.weights[i].T)
-                delta = delta * self.activations[i-1].derivative(self.pre_activations[i-1])
-        
+                delta = self._mult_activation_derivative(delta,self.pre_activations[i-1], self.activations[i-1])
+                # delta = delta * self.activations[i-1].derivative(self.pre_activations[i-1])
+        print("Weight gradient output layer: ",len(self.weight_gradients))
         return loss_value
     
     def update_weights(self, learning_rate):
