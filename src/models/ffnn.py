@@ -220,11 +220,11 @@ class FFNN:
                 self.weight_gradients[i] += reg_grad
             
             if i>0:
-                print("Sini bentuk deriv shape: ",self.activations[i-1].derivative(self.pre_activations[i-1]).shape)
+                # print("Sini bentuk deriv shape: ",self.activations[i-1].derivative(self.pre_activations[i-1]).shape)
                 delta = delta.dot(self.weights[i].T)
                 delta = self._mult_activation_derivative(delta,self.pre_activations[i-1], self.activations[i-1])
                 # delta = delta * self.activations[i-1].derivative(self.pre_activations[i-1])
-        print("Weight gradient output layer: ",len(self.weight_gradients))
+        # print("Weight gradient output layer: ",len(self.weight_gradients))
         return loss_value
     
     def update_weights(self, learning_rate):
