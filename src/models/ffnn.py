@@ -334,30 +334,47 @@ class FFNN:
             return model
     
     # Plotting (extra)
+    
     def plot_model(self):
-            return 0
-            """
-            Visualize the network architecture with weights
-            """
+        """
+        Visualize the network architecture with weights
+        """
+        from .utils import plot_network_graph
+        plot_network_graph(self.layer_sizes, self.weights, self.biases, 
+                        title='Neural Network Architecture')
     
     def plot_weight(self, layers=None):
-            return 0
-            """
-            Plot weight distribution of specified layers
-            
-            Parameters:
-            -----------
-            layers : list of int or None
-                Indices of layers to plot. If None, plot all layers.
-            """
+        """
+        Plot weight distribution of specified layers
+        
+        Parameters:
+        -----------
+        layers : list of int or None
+            Indices of layers to plot. If None, plot all layers.
+        """
+        if layers is None:
+            layers = list(range(len(self.weights)))
+        
+        weights_to_plot = [self.weights[i] for i in layers]
+        layer_names = [f'Layer {i+1}' for i in layers]
+        
+        from .utils import plot_weight_distribution
+        plot_weight_distribution(weights_to_plot, 
+                               title='Weight Distribution')
     
     def plot_gradient_distribution(self, layers=None):
-            return 0
-            """
-            Plot gradient distribution of specified layers
-            
-            Parameters:
-            -----------
-            layers : list of int or None
-                Indices of layers to plot. If None, plot all layers.
-            """
+        """
+        Plot gradient distribution of specified layers
+        
+        Parameters:
+        -----------
+        layers : list of int or None
+            Indices of layers to plot. If None, plot all layers.
+        """
+        if layers is None:
+            layers = list(range(len(self.weight_gradients)))
+        gradients_to_plot = [self.weight_gradients[i] for i in layers]
+        layer_names = [f'Layer {i+1}' for i in layers]
+        from .utils import plot_weight_distribution
+        plot_weight_distribution(gradients_to_plot, 
+                               title='Gradient Distribution')
