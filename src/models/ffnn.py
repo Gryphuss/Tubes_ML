@@ -289,31 +289,49 @@ class FFNN:
         return val_loss
     
     def save(self, file_path):
-            return 0
-            """
-            Save model to file
-            
-            Parameters:
-            -----------
-            file_path : str
-                Path to save file
-            """
+        """
+        Save model to file
+        
+        Parameters:
+        -----------
+        file_path : str
+            Path to save file
+        """
+        with open(file_path, 'wb') as f:
+            pickle.dump({
+                'layer_sizes': self.layer_sizes,
+                'weights': self.weights,
+                'biases': self.biases,
+                'activations': self.activations,
+                'loss': self.loss,
+            }, f)
     
     def load(cls, file_path):
-            return 0
-            """
-            Load model from file
+        """
+        Load model from file
+        
+        Parameters:
+        -----------
+        file_path : str
+            Path to model file
             
-            Parameters:
-            -----------
-            file_path : str
-                Path to model file
-                
-            Returns:
-            --------
-            FFNN
-                Loaded model
-            """
+        Returns:
+        --------
+        FFNN
+            Loaded model
+        """
+        with open(file_path, 'rb') as f:
+            model_data = pickle.load(f)
+            model = cls(
+                layer_sizes=model_data['layer_sizes'],
+                activations=model_data['activations'],
+                loss=model_data['loss']
+            )
+            
+            model.weights = model_data['weights']
+            model.biases = model_data['biases']
+            
+            return model
     
     # Plotting (extra)
     def plot_model(self):
