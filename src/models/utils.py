@@ -14,7 +14,13 @@ def ensure_2d_y(y, activation_name):
             return y.reshape(-1,1)
 
 def one_hot_encode(y, n_classes=None):
-    return 0
+    if n_classes is None:
+        n_classes = np.max(y) + 1
+    
+    n_samples = len(y)
+    one_hot = np.zeros((n_samples, n_classes))
+    one_hot[np.arange(n_samples), y] = 1
+    return one_hot
 
 
 def train_test_split(X, y, test_size=0.2, random_state=None):
@@ -22,19 +28,77 @@ def train_test_split(X, y, test_size=0.2, random_state=None):
 
 
 def batch_iterator(X, y, batch_size=32, shuffle=True):
-    return 0
+    n_samples = X.shape[0]
+    indices = np.arange(n_samples)
+    
+    if shuffle:
+        np.random.shuffle(indices)
+    
+    for start_idx in range(0, n_samples, batch_size):
+        end_idx = min(start_idx + batch_size, n_samples)
+        batch_indices = indices[start_idx:end_idx]
+        
+        yield X[batch_indices], y[batch_indices]
 
 
 def plot_training_history(history, title='Training History'):
-    return 0
+    plt.figure(figsize=(12, 5))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(history['train_loss'], label='Training Loss')
+    if 'val_loss' in history:
+        plt.plot(history['val_loss'], label='Validation Loss')
+    plt.title('Loss over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    
+    if 'train_accuracy' in history:
+        plt.subplot(1, 2, 2)
+        plt.plot(history['train_accuracy'], label='Training Accuracy')
+        if 'val_accuracy' in history:
+            plt.plot(history['val_accuracy'], label='Validation Accuracy')
+        plt.title('Accuracy over Epochs')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.legend()
+    
+    plt.suptitle(title)
+    plt.tight_layout()
+    plt.show()
 
 
 def plot_weight_distribution(weights, title='Weight Distribution'):
-    return 0
+    n_layers = len(weights)
+    fig, axes = plt.subplots(1, n_layers, figsize=(15, 5))
+    
+    if n_layers == 1:
+        axes = [axes]
+    
+    for i, layer_weights in enumerate(weights):
+        if isinstance(layer_weights, tuple):
+            w = layer_weights[0].flatten()
+            b = layer_weights[1].flatten()
+            axes[i].hist(w, bins=30, alpha=0.7, label='Weights')
+            axes[i].hist(b, bins=30, alpha=0.7, label='Biases')
+        else:
+            w = layer_weights.flatten()
+            axes[i].hist(w, bins=30)
+        
+        axes[i].set_title(f'Layer {i+1}')
+        axes[i].set_xlabel('Weight Value')
+        axes[i].set_ylabel('Frequency')
+        if isinstance(layer_weights, tuple):
+            axes[i].legend()
+    
+    plt.suptitle(title)
+    plt.tight_layout()
+    plt.show()
 
 
 def plot_network_graph(layer_sizes, weights, biases, gradients=None, title='Neural Network Graph'):
     # Neural Network Graph maker
+    # Idenya gini
     
     # Args:
     # - layer_sizes: list of integers, number of neurons in each layer
@@ -101,6 +165,7 @@ class RMSNorm:
     def __init__(self, eps=1e-8):
         self.eps = eps
         self.gamma = None
+        self.grad_gamma = None
     
     def initialize(self, shape):
         self.gamma = np.ones(shape)
