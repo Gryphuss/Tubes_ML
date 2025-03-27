@@ -62,11 +62,33 @@ class FFNN:
             self.loss = get_loss(loss)
         else:
             self.loss = loss
+
+        # bonus regularizer
+        self.regularizer = None
+        if regularizer:
+            if isinstance(regularizer, str):
+                self.regularizer = get_regularizer(regularizer, 
+                                        **(weight_init_params or {}))
+            else:
+                self.regularizer = regularizer
+        
+        # bonur normalization
+        self.use_rms_norm = use_rms_norm
+        self.normalizers = []
+        if use_rms_norm:
+            for i in range(self.n_layers - 1):
+                self.normalizers.append(RMSNorm())
+        
+        # Supaya gak error none
+        if weight_init_params is None:
+            weight_init_params = {}
         
         if isinstance(weight_initializer,str):
             self.initializer = get_initializer(weight_initializer, **weight_init_params)
         else:
             self.initializer = weight_initializer
+        
+        self._initialize_weights()
             
     def _initialize_weights(self):
         self.weights = []
@@ -79,9 +101,13 @@ class FFNN:
             self.weights.append(self.initializer.initialize(weight_shape))
             self.weight_gradients.append(np.zeros(weight_shape))
             
-            bias_shape = (self.layer_size[i+1],)
+            bias_shape = (self.layer_sizes[i+1],)
             self.biases.append(np.zeros(bias_shape))
             self.bias_gradients.append(np.zeros)
+
+            # if rms norm
+            if self.use_rms_norm:
+                self.normalizers[i].initialize(bias_shape)
             
     def forward(self, X):
         """
@@ -97,6 +123,7 @@ class FFNN:
         list of ndarrays
             Pre-activation and post-activation values for each layer
         """
+        # print("ni hao")
         # Shape: (n_samples, n_features) array size self.n_layers-1
         self.layer_inputs = [X]
         
@@ -109,6 +136,9 @@ class FFNN:
         for i in range(self.n_layers-1):
             net = np.dot(self.post_activations[-1],self.weights[i]) + self.biases[i]
             self.pre_activations.append(net)
+
+            if self.use_rms_norm:
+                net = self.normalizers[i].forward(net)
             
             output = self.activations[i].activate(net)
             self.post_activations.append(output)
@@ -133,6 +163,10 @@ class FFNN:
         y_pred = self.post_activations[-1]
         
         loss_value = self.loss.compute(y_true, y_pred)
+
+        if self.regularizer:
+            reg_loss = self.regularizer.compute(self.weights)
+            loss_value += reg_loss
         
         batch_size = y_true.shape[0]
         # Error term output layer, shape: (n_sample,output)
@@ -140,12 +174,21 @@ class FFNN:
         
         # Mulai dari hidden layer terakhir
         for i in range(self.n_layers - 2, -1, -1):
+
+            # bonus
+            if self.use_rms_norm:
+                delta = self.normalizers[i].backward(delta)
             # derivative loss w.r.t weight layer i = error term (layer i+1) * post_activation layer i 
             
             # post_activation transposed shape: (n_output, n_sample)
             # weight_gradients: derivative loss w.r.t weight layer i (∂L/∂W)
             self.weight_gradients[i] = np.dot(self.post_activations[i].T,delta) / batch_size
             self.bias_gradients[i] = np.mean(delta,axis=0)
+
+            # bonus
+            if self.regularizer:
+                reg_grad = self.regularizer.derivative([self.weights[i]])[0]
+                self.weight_gradients[i] += reg_grad
             
             if i>0:
                 delta = delta.dot(self.weights[i].T)
@@ -164,7 +207,10 @@ class FFNN:
         """
         for i in range(self.n_layers - 1):
             self.weights[i] -= learning_rate * self.weight_gradients[i]
-            self.biases -= learning_rate * self.bias_gradients[i]
+            self.biases[i] -= learning_rate * self.bias_gradients[i]
+
+            if self.use_rms_norm:
+                self.normalizers[i].update(learning_rate)
             
     
     def fit(self, X, y, batch_size=32, learning_rate=0.01, epochs=100, 
@@ -289,92 +335,100 @@ class FFNN:
         return val_loss
     
     def save(self, file_path):
-        """
-        Save model to file
-        
-        Parameters:
-        -----------
-        file_path : str
-            Path to save file
-        """
-        with open(file_path, 'wb') as f:
-            pickle.dump({
-                'layer_sizes': self.layer_sizes,
-                'weights': self.weights,
-                'biases': self.biases,
-                'activations': self.activations,
-                'loss': self.loss,
-            }, f)
+            """
+            Save model to file
+            
+            Parameters:
+            -----------
+            file_path : str
+                Path to save file
+            """
+            with open(file_path, 'wb') as f:
+                pickle.dump({
+                    'layer_sizes': self.layer_sizes,
+                    'weights': self.weights,
+                    'biases': self.biases,
+                    'activations': self.activations,
+                    'loss': self.loss,
+                    'regularizer': self.regularizer,
+                    'use_rms_norm': self.use_rms_norm
+                }, f)
     
     def load(cls, file_path):
-        """
-        Load model from file
-        
-        Parameters:
-        -----------
-        file_path : str
-            Path to model file
+            """
+            Load model from file
             
-        Returns:
-        --------
-        FFNN
-            Loaded model
-        """
-        with open(file_path, 'rb') as f:
-            model_data = pickle.load(f)
+            Parameters:
+            -----------
+            file_path : str
+                Path to model file
+                
+            Returns:
+            --------
+            FFNN
+                Loaded model
+            """
+            with open(file_path, 'rb') as f:
+                model_data = pickle.load(f)
+
+            # Create model instance
             model = cls(
                 layer_sizes=model_data['layer_sizes'],
                 activations=model_data['activations'],
                 loss=model_data['loss']
             )
-            
+
+            # Set model parameters
             model.weights = model_data['weights']
             model.biases = model_data['biases']
-            
+            model.regularizer = model_data.get('regularizer')
+            model.use_rms_norm = model_data.get('use_rms_norm', False)
+
             return model
     
     # Plotting (extra)
-    
     def plot_model(self):
-        """
-        Visualize the network architecture with weights
-        """
-        from .utils import plot_network_graph
-        plot_network_graph(self.layer_sizes, self.weights, self.biases, 
-                        title='Neural Network Architecture')
+            """
+            Visualize the network architecture with weights
+            """
+            from .utils import plot_network_graph
+            plot_network_graph(self.layer_sizes, self.weights, self.biases, 
+                            title='Neural Network Architecture')
     
     def plot_weight(self, layers=None):
-        """
-        Plot weight distribution of specified layers
-        
-        Parameters:
-        -----------
-        layers : list of int or None
-            Indices of layers to plot. If None, plot all layers.
-        """
-        if layers is None:
-            layers = list(range(len(self.weights)))
-        
-        weights_to_plot = [self.weights[i] for i in layers]
-        layer_names = [f'Layer {i+1}' for i in layers]
-        
-        from .utils import plot_weight_distribution
-        plot_weight_distribution(weights_to_plot, 
-                               title='Weight Distribution')
+            """
+            Plot weight distribution of specified layers
+            
+            Parameters:
+            -----------
+            layers : list of int or None
+                Indices of layers to plot. If None, plot all layers.
+            """
+            if layers is None:
+                layers = list(range(len(self.weights)))
+
+            weights_to_plot = [self.weights[i] for i in layers]
+            layer_names = [f'Layer {i+1}' for i in layers]
+
+            from .utils import plot_weight_distribution
+            plot_weight_distribution(weights_to_plot, 
+                                   title='Weight Distribution')
     
     def plot_gradient_distribution(self, layers=None):
-        """
-        Plot gradient distribution of specified layers
-        
-        Parameters:
-        -----------
-        layers : list of int or None
-            Indices of layers to plot. If None, plot all layers.
-        """
-        if layers is None:
-            layers = list(range(len(self.weight_gradients)))
-        gradients_to_plot = [self.weight_gradients[i] for i in layers]
-        layer_names = [f'Layer {i+1}' for i in layers]
-        from .utils import plot_weight_distribution
-        plot_weight_distribution(gradients_to_plot, 
-                               title='Gradient Distribution')
+            """
+            Plot gradient distribution of specified layers
+            
+            Parameters:
+            -----------
+            layers : list of int or None
+                Indices of layers to plot. If None, plot all layers.
+            """
+            if layers is None:
+                layers = list(range(len(self.weight_gradients)))
+
+            gradients_to_plot = [self.weight_gradients[i] for i in layers]
+            layer_names = [f'Layer {i+1}' for i in layers]
+
+            from .utils import plot_weight_distribution
+            plot_weight_distribution(gradients_to_plot, 
+                                   title='Gradient Distribution')
