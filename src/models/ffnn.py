@@ -152,27 +152,28 @@ class FFNN:
         #     print(f"Layer: {i}",self.pre_activations[i].shape)
         return self.post_activations[-1]
             
-    def _mult_activation_derivative(self, temp_delta, y_pred, activation):
-        # Bukan softmax, kali biasa (multiply element wise)
-        if (activation.name() != "Softmax"):
-            # print("Loss gradient: ",temp_delta.shape, "Y pred activation: ", activation.derivative(y_pred).shape)
-            return temp_delta * activation.derivative(y_pred)
-
-        # If softmax, we perform dot multiplication because Jacobian is a matrix for each row of temp_delta
-        jacobian = activation.derivative(y_pred)
-        
+    def _mult_activation_derivative(self, temp_delta, activation_input, activation):
+        if activation.name() != "Softmax":
+            derivatives = activation.derivative(activation_input)
+            derivatives = np.clip(derivatives, -1e10, 1e10)
+            temp_delta = np.clip(temp_delta, -1e10, 1e10)
+            
+            return temp_delta * derivatives
+    
+        jacobian = activation.derivative(activation_input)
         new_delta = np.zeros_like(temp_delta)
         
         for i in range(temp_delta.shape[0]):
-            # print("temp_delta[i]: ",temp_delta[i].shape, "Jacobian i: ", jacobian[i].shape)
-            new_delta[i] = np.dot(temp_delta[i],jacobian[i])
-            # print("new_delta[i]: ",new_delta[i].shape)
+            jacobian[i] = np.clip(jacobian[i], -1e10, 1e10)
+            temp_delta_i = np.clip(temp_delta[i], -1e10, 1e10)
+            
+            new_delta[i] = np.dot(temp_delta_i, jacobian[i])
         
         return new_delta
     
     def backward(self, y_true):
         """
-        Backward propagation
+        Backward propagation with improved numerical stability
         
         Parameters:
         -----------
@@ -187,57 +188,86 @@ class FFNN:
         y_pred = self.post_activations[-1]
         
         loss_value = self.loss.compute(y_true, y_pred)
-
+    
         if self.regularizer:
             reg_loss = self.regularizer.compute(self.weights)
             loss_value += reg_loss
         
         batch_size = y_true.shape[0]
-        # Error term output layer, shape: (n_sample,output)
         
-        is_special_case = (self.loss.name() == "Categorial Cross-Entropy" and self.activations[-1].name() == "Softmax") or (self.loss.name() == "Binary Cross-Entropy" and self.activations[-1].name() == "Sigmoid")
+        is_special_case = (self.loss.name() == "Categorial Cross-Entropy" and 
+                          self.activations[-1].name() == "Softmax") or (
+                          self.loss.name() == "Binary Cross-Entropy" and 
+                          self.activations[-1].name() == "Sigmoid")
+        
         if is_special_case:
             delta = y_pred - y_true
         else:
-            delta = self._mult_activation_derivative(self.loss.derivative(y_true, y_pred),y_pred,self.activations[-1])
+            loss_gradient = self.loss.derivative(y_true, y_pred)
+            loss_gradient = np.clip(loss_gradient, -1e10, 1e10)
+            delta = self._mult_activation_derivative(
+                loss_gradient, self.pre_activations[-1], self.activations[-1])
         
-        # Mulai dari hidden layer terakhir
         for i in range(self.n_layers - 2, -1, -1):
-
-            # bonus
             if self.use_rms_norm:
                 delta = self.normalizers[i].backward(delta)
-            # derivative loss w.r.t weight layer i = error term (layer i+1) * post_activation layer i 
             
-            # post_activation transposed shape: (n_output, n_sample)
-            # weight_gradients: derivative loss w.r.t weight layer i (∂L/∂W)
-            self.weight_gradients[i] = np.dot(self.post_activations[i].T,delta) / batch_size
-            self.bias_gradients[i] = np.mean(delta,axis=0)
-
-            # bonus
+            delta_clipped = np.clip(delta, -1e10, 1e10)
+            self.weight_gradients[i] = np.dot(self.post_activations[i].T, delta_clipped) / batch_size
+            self.bias_gradients[i] = np.mean(delta_clipped, axis=0)
+    
             if self.regularizer:
                 reg_grad = self.regularizer.derivative([self.weights[i]])[0]
                 self.weight_gradients[i] += reg_grad
             
-            if i>0:
-                # print("Sini bentuk deriv shape: ",self.activations[i-1].derivative(self.pre_activations[i-1]).shape)
-                delta = delta.dot(self.weights[i].T)
-                delta = self._mult_activation_derivative(delta,self.pre_activations[i-1], self.activations[i-1])
-                # delta = delta * self.activations[i-1].derivative(self.pre_activations[i-1])
-        # print("Weight gradient output layer: ",len(self.weight_gradients))
+            if i > 0:
+                delta = np.dot(delta_clipped, self.weights[i].T)
+                delta = np.clip(delta, -1e10, 1e10)
+                delta = self._mult_activation_derivative(
+                    delta, self.pre_activations[i-1], self.activations[i-1])
+        
         return loss_value
     
-    def update_weights(self, learning_rate):
+    def clip_gradients(self, max_norm=1.0):
         """
-        Update weights and biases using gradient descent
+        Clip gradients to prevent exploding gradients
         
+        Parameters:
+        -----------
+        max_norm : float
+            Maximum L2 norm of the gradients
+        """
+        total_norm_squared = 0
+        for grad in self.weight_gradients:
+            total_norm_squared += np.sum(np.square(grad))
+        
+        total_norm = np.sqrt(total_norm_squared)
+        
+        if total_norm > max_norm:
+            clip_factor = max_norm / (total_norm + 1e-6)
+            
+            for i in range(len(self.weight_gradients)):
+                self.weight_gradients[i] *= clip_factor
+                self.bias_gradients[i] *= clip_factor
+
+    def update_weights(self, learning_rate, gradient_clip=1.0):
+        """
+        Update weights and biases using gradient descent with clipping
+
         Parameters:
         -----------
         learning_rate : float
             Learning rate for gradient descent
+        gradient_clip : float
+            Maximum gradient norm
         """
+        self.clip_gradients(max_norm=gradient_clip)
+
         for i in range(self.n_layers - 1):
+            epsilon = 1e-8
+
             self.weights[i] -= learning_rate * self.weight_gradients[i]
+
             self.biases[i] -= learning_rate * self.bias_gradients[i]
 
             if self.use_rms_norm:
@@ -245,9 +275,10 @@ class FFNN:
             
     
     def fit(self, X, y, batch_size=32, learning_rate=0.01, epochs=100, 
-                verbose=1, validation_data=None):
+         verbose=1, validation_data=None, gradient_clip=0.0,
+         learning_rate_decay=1.0, early_stopping_patience=None):
         """
-        Train the network
+        Train the network with tqdm progress bar
         
         Parameters:
         -----------
@@ -261,7 +292,7 @@ class FFNN:
             Size of mini-batches
             
         learning_rate : float
-            Learning rate for gradient descent
+            Initial learning rate for gradient descent
             
         epochs : int
             Number of training epochs
@@ -272,58 +303,94 @@ class FFNN:
         validation_data : tuple of (X_val, y_val) or None
             Validation data
             
+        gradient_clip : float
+            Maximum gradient norm (0.0 = no clipping)
+            
+        learning_rate_decay : float
+            Factor to multiply learning rate each epoch
+            
+        early_stopping_patience : int or None
+            Number of epochs with no improvement before stopping
+            
         Returns:
         --------
         dict
             Training history
         """
-        # convert y value to 2D for consistency
-        y = ensure_2d_y(y,self.activations[-1].name())
+        from tqdm import tqdm
         
-        # Row size train X
+        y = ensure_2d_y(y, self.activations[-1].name())
+        
         n_samples = X.shape[0]
         history = {
             'train_loss': [],
-            'val_loss' : [] if validation_data is not None else None
+            'val_loss': [] if validation_data is not None else None
         }
+        
+        best_val_loss = float('inf')
+        patience_counter = 0
+        current_lr = learning_rate
         
         for epoch in range(epochs):
             start_time = time.time()
             epoch_loss = 0.0
             
-            iterator = batch_iterator(X,y, batch_size)
+            iterator = batch_iterator(X, y, batch_size)
             n_batches = int(np.ceil(n_samples/batch_size))
             
-            for batch_idx, (X_batch, y_batch) in enumerate(iterator):
-                # Print progress every 10%
-                if verbose == 1 and batch_idx % max(1,n_batches // 10) == 0:
-                    print(f"Epoch {epoch+1}/{epochs} - Batch {batch_idx+1}/{n_batches}")
-                
+            for batch_idx, (X_batch, y_batch) in enumerate(tqdm(iterator, total=n_batches, 
+                                                          desc=f'Epoch {epoch+1}/{epochs}')):
+                # Forward pass
                 self.forward(X_batch)
                 
+                # Backward pass
                 batch_loss = self.backward(y_batch)
-                # Batch loss contribution relative to an entire epoch
+                
+                if np.isnan(batch_loss) or np.isinf(batch_loss):
+                    if verbose:
+                        print(f"Warning: Loss is {batch_loss} at epoch {epoch+1}, batch {batch_idx+1}")
+                        print("Reducing learning rate and skipping batch...")
+                    current_lr *= 0.5
+                    continue
+                    
                 epoch_loss += batch_loss * X_batch.shape[0] / n_samples
                 
-                self.update_weights(learning_rate)
+                if gradient_clip > 0:
+                    self.clip_gradients(max_norm=gradient_clip)
+                    
+                self.update_weights(current_lr)
             
             history['train_loss'].append(epoch_loss)
+            
             if validation_data is not None:
                 X_val, y_val = validation_data
-                # convert y value to 2D for consistency
-                y_val = ensure_2d_y(y_val,self.activations[-1].name())
+                y_val = ensure_2d_y(y_val, self.activations[-1].name())
         
-                # Just to keep track val loss, no need for backward
                 y_pred = self.forward(X_val)
                 val_loss = self.loss.compute(y_val, y_pred)
                 history['val_loss'].append(val_loss)
                 
-                if verbose == 1:
+                if early_stopping_patience:
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                        if patience_counter >= early_stopping_patience:
+                            if verbose:
+                                print(f"Early stopping at epoch {epoch+1}")
+                            break
+                        
+                if verbose:
                     print(f'Epoch {epoch+1}/{epochs} - {time.time()-start_time:.2f}s - '
-                          f'loss: {epoch_loss:.4f} - val_loss: {val_loss:.4f}')
-            elif verbose == 1:
+                          f'loss: {epoch_loss:.4f} - val_loss: {val_loss:.4f} - lr: {current_lr:.6f}')
+            elif verbose:
                 print(f'Epoch {epoch+1}/{epochs} - {time.time()-start_time:.2f}s - '
-                      f'loss: {epoch_loss:.4f}')
+                      f'loss: {epoch_loss:.4f} - lr: {current_lr:.6f}')
+            
+            current_lr *= learning_rate_decay
+        
+        return history
     
     def predict(self, X):
         """

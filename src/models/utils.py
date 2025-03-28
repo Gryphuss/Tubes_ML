@@ -6,12 +6,24 @@ from matplotlib.lines import Line2D
 import pickle
 
 def ensure_2d_y(y, activation_name):
+    # if len(y.shape) == 1:
+    #     if activation_name == "Softmax":
+    #         print("One hot encode y")
+    #     else:
+    #         # Reshape to 2D with one column
+    #         return y.reshape(-1,1)
+    
+    if y is None:
+        return None
+        
     if len(y.shape) == 1:
         if activation_name == "Softmax":
-            print("One hot encode y")
+            print("ohotencode y")
+            return y.reshape(-1, 1)
         else:
-            # Reshape to 2D with one column
-            return y.reshape(-1,1)
+            return y.reshape(-1, 1)
+    
+    return y
 
 def one_hot_encode(y, n_classes=None):
     if n_classes is None:
