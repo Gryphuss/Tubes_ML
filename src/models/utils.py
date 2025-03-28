@@ -118,7 +118,97 @@ def plot_network_graph(layer_sizes, weights, biases, gradients=None, title='Neur
     # - biases: list of bias vectors
     # - gradients: optional, list of weight gradient matrices
     # - title: string, title of the plot
-    return 0
+    G = nx.DiGraph()
+    
+    pos = {}
+    node_labels = {}
+    node_colors = []
+
+    for layer_idx, n_neurons in enumerate(layer_sizes):
+        for neuron_idx in range(n_neurons):
+            node_id = f"L{layer_idx}_{neuron_idx}"
+            G.add_node(node_id)
+            pos[node_id] = (layer_idx, neuron_idx - n_neurons/2)
+            
+            if layer_idx == 0:
+                node_labels[node_id] = f"Input {neuron_idx+1}"
+                node_colors.append('lightblue')
+            elif layer_idx == len(layer_sizes) - 1:
+                node_labels[node_id] = f"Output {neuron_idx+1}"
+                node_colors.append('lightgreen')
+            else:
+                node_labels[node_id] = f"H{layer_idx}_{neuron_idx+1}"
+                node_colors.append('lightgray')
+    
+    for layer_idx in range(1, len(layer_sizes)):
+        node_id = f"B{layer_idx}"
+        G.add_node(node_id)
+        pos[node_id] = (layer_idx-0.5, -layer_sizes[layer_idx]/2 - 1)
+        node_labels[node_id] = f"Bias {layer_idx}"
+        node_colors.append('pink')
+    
+    edge_labels = {}
+    edge_colors = []
+    edge_widths = []
+    
+    for layer_idx in range(len(weights)):
+        for i in range(layer_sizes[layer_idx]):
+            for j in range(layer_sizes[layer_idx+1]):
+                source = f"L{layer_idx}_{i}"
+                target = f"L{layer_idx+1}_{j}"
+                weight_value = weights[layer_idx][i, j]
+                
+                G.add_edge(source, target)
+                edge_labels[(source, target)] = f"{weight_value:.2f}"
+                
+                if weight_value > 0:
+                    edge_colors.append('blue')
+                else:
+                    edge_colors.append('red')
+                
+                edge_widths.append(0.5 + 3 * min(1, abs(weight_value)))
+    
+    for layer_idx in range(len(biases)):
+        for j in range(layer_sizes[layer_idx+1]):
+            source = f"B{layer_idx+1}"
+            target = f"L{layer_idx+1}_{j}"
+            bias_value = biases[layer_idx][j]
+            
+            G.add_edge(source, target)
+            edge_labels[(source, target)] = f"{bias_value:.2f}"
+            
+            if bias_value > 0:
+                edge_colors.append('blue')
+            else:
+                edge_colors.append('red')
+            
+            edge_widths.append(0.5 + 3 * min(1, abs(bias_value)))
+    
+    plt.figure(figsize=(12, 8))
+    
+    nx.draw(G, pos, with_labels=False, node_color=node_colors, edge_color=edge_colors, 
+            width=edge_widths, node_size=500, arrowsize=10, alpha=0.8)
+    
+    nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=8)
+    
+    significant_edges = {e: w for e, w in edge_labels.items() 
+                        if abs(float(w)) > 0.1 and np.random.random() > 0.7}
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=significant_edges, font_size=7)
+    
+    legend_elements = [
+        Patch(facecolor='lightblue', edgecolor='black', label='Input Layer'),
+        Patch(facecolor='lightgray', edgecolor='black', label='Hidden Layer'),
+        Patch(facecolor='lightgreen', edgecolor='black', label='Output Layer'),
+        Patch(facecolor='pink', edgecolor='black', label='Bias'),
+        Line2D([0], [0], color='blue', lw=2, label='Positive Weight'),
+        Line2D([0], [0], color='red', lw=2, label='Negative Weight')
+    ]
+    plt.legend(handles=legend_elements, loc='upper right')
+    
+    plt.title(title)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
 
 # ------------------------- BONUS (belum 100% checked dan belum 100% benar) -------------------------------
 class Regularizer:

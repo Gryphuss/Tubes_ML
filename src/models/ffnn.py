@@ -433,56 +433,160 @@ class FFNN:
         return val_loss
     
     def save(self, file_path):
-            """
-            Save model to file
-            
-            Parameters:
-            -----------
-            file_path : str
-                Path to save file
-            """
+        """
+        Save model to file with detailed debugging
+
+        Parameters:
+        -----------
+        file_path : str
+            Path to save file
+        """
+        try:
+            print(f"Starting save process to {file_path}")
+
+            print(f"layer_sizes: {self.layer_sizes}")
+
+            print(f"Number of weight matrices: {len(getattr(self, 'weights', []))}")
+            for i, w in enumerate(getattr(self, 'weights', [])):
+                print(f"Weight matrix {i} shape: {w.shape}")
+
+            print(f"Number of bias vectors: {len(getattr(self, 'biases', []))}")
+            for i, b in enumerate(getattr(self, 'biases', [])):
+                print(f"Bias vector {i} shape: {b.shape if hasattr(b, 'shape') else 'unknown'}")
+
+            print(f"Number of activation functions: {len(getattr(self, 'activations', []))}")
+            for i, act in enumerate(getattr(self, 'activations', [])):
+                print(f"Activation {i}: {act.__class__.__name__ if hasattr(act, '__class__') else 'unknown'}")
+
+            loss_name = getattr(self.loss, 'name', lambda: 'unknown')()
+            print(f"Loss function: {loss_name}")
+
+            if getattr(self, 'use_rms_norm', False):
+                print(f"RMS norm enabled, normalizers: {len(getattr(self, 'normalizers', []))}")
+
+            model_data = {
+                'layer_sizes': self.layer_sizes,
+                'weights': self.weights,
+                'biases': self.biases,
+            }
+
+            if hasattr(self, 'loss'):
+                model_data['loss'] = self.loss
+
+            if hasattr(self, 'activations') and self.activations:
+                activation_list = []
+                for act in self.activations:
+                    if hasattr(act, 'name'):
+                        activation_list.append(act.name())
+                    else:
+                        activation_list.append(str(act))
+                model_data['activations'] = activation_list
+
+            if hasattr(self, 'regularizer') and self.regularizer:
+                model_data['regularizer'] = self.regularizer
+
+            if hasattr(self, 'use_rms_norm'):
+                model_data['use_rms_norm'] = self.use_rms_norm
+
+            print("Model data prepared successfully, attempting to save...")
+
             with open(file_path, 'wb') as f:
-                pickle.dump({
-                    'layer_sizes': self.layer_sizes,
-                    'weights': self.weights,
-                    'biases': self.biases,
-                    'activations': self.activations,
-                    'loss': self.loss,
-                    'regularizer': self.regularizer,
-                    'use_rms_norm': self.use_rms_norm
-                }, f)
+                pickle.dump(model_data, f)
+
+            print("Model saved successfully!")
+
+        except Exception as e:
+            print(f"Error during save: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
+    @classmethod
     def load(cls, file_path):
-            """
-            Load model from file
+        """
+        Load model from file with detailed debugging
+        
+        Parameters:
+        -----------
+        file_path : str
+            Path to model file
             
-            Parameters:
-            -----------
-            file_path : str
-                Path to model file
-                
-            Returns:
-            --------
-            FFNN
-                Loaded model
-            """
+        Returns:
+        --------
+        FFNN
+            Loaded model
+        """
+        try:
+            print(f"Starting load process from {file_path}")
+            
             with open(file_path, 'rb') as f:
                 model_data = pickle.load(f)
-
-            # Create model instance
+    
+            print(f"File loaded. Model data type: {type(model_data)}")
+            
+            if isinstance(model_data, dict):
+                print("Model data is a dictionary, checking contents...")
+                for key, value in model_data.items():
+                    if isinstance(value, list):
+                        print(f"{key}: list with {len(value)} items")
+                    else:
+                        print(f"{key}: {type(value)}")
+            else:
+                print(f"Warning: Model data is not a dictionary, but {type(model_data)}")
+            
+            layer_sizes = model_data.get('layer_sizes')
+            print(f"Layer sizes: {layer_sizes}")
+            
+            print(f"Creating minimal model with {len(layer_sizes)} layers")
+            
+            default_activations = ['relu'] * (len(layer_sizes) - 2) + ['softmax']
+            default_loss = 'categorical_cross_entropy'
+            
             model = cls(
-                layer_sizes=model_data['layer_sizes'],
-                activations=model_data['activations'],
-                loss=model_data['loss']
+                layer_sizes=layer_sizes,
+                activations=default_activations,
+                loss=default_loss
             )
-
-            # Set model parameters
-            model.weights = model_data['weights']
-            model.biases = model_data['biases']
-            model.regularizer = model_data.get('regularizer')
-            model.use_rms_norm = model_data.get('use_rms_norm', False)
-
+            
+            print("Basic model created. Setting saved parameters...")
+    
+            if 'weights' in model_data:
+                print(f"Setting weights: {len(model_data['weights'])} matrices")
+                model.weights = model_data['weights']
+                
+            if 'biases' in model_data:
+                print(f"Setting biases: {len(model_data['biases'])} vectors")
+                model.biases = model_data['biases']
+                
+            if 'loss' in model_data:
+                print("Setting loss function")
+                model.loss = model_data['loss']
+                
+            if 'activations' in model_data:
+                print(f"Setting activations: {len(model_data['activations'])} functions")
+                if all(isinstance(act, str) for act in model_data['activations']):
+                    from src.models.activations import get_activation
+                    activation_objects = [get_activation(act) for act in model_data['activations']]
+                    model.activations = activation_objects
+                else:
+                    model.activations = model_data['activations']
+                    
+            if 'regularizer' in model_data:
+                print("Setting regularizer")
+                model.regularizer = model_data.get('regularizer')
+                
+            if 'use_rms_norm' in model_data:
+                print(f"Setting RMS norm: {model_data['use_rms_norm']}")
+                model.use_rms_norm = model_data.get('use_rms_norm')
+    
+            print("Model loaded successfully!")
             return model
+            
+        except Exception as e:
+            print(f"Error during load: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     # Plotting (extra)
     def plot_model(self):
