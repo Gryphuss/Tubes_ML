@@ -13,35 +13,7 @@ from .utils import (ensure_2d_y,plot_weight_distribution, plot_network_graph,
 class FFNN:
     def __init__(self, layer_sizes, activations, loss='mse', 
                      weight_initializer='uniform', weight_init_params=None,
-                     regularizer=None, use_rms_norm=False):
-        """
-        Initialize the network
-        
-        Parameters:
-        -----------
-        layer_sizes : list of integers
-            Number of neurons in each layer, including input and output layers
-        
-        activations : list of strings or activation objects
-            Activation functions for each layer
-            Must be one less than layer_sizes (no activation for input layer)
-        
-        loss : string or loss object
-            Loss function for the network
-        
-        weight_initializer : string or initializer object
-            Weight initialization method
-        
-        weight_init_params : dict or None
-            Parameters for weight initializer
-        
-        regularizer : string or regularizer object or None
-            Regularization method (L1 or L2)
-        
-        use_rms_norm : bool
-            Whether to use RMS normalization
-        """
-        
+                     regularizer=None, use_rms_norm=False):        
         if len(layer_sizes) < 2:
             raise ValueError("Network must have at least 2 layers (input and output)")
     
@@ -111,19 +83,6 @@ class FFNN:
 
             
     def forward(self, X):
-        """
-        Forward propagation
-        
-        Parameters:
-        -----------
-        X : ndarray of shape (n_samples, n_features)
-            Input data
-            
-        Returns:
-        --------
-        list of ndarrays
-            Pre-activation and post-activation values for each layer
-        """
         # print("ni hao")
         # Shape: (n_samples, n_features) array size self.n_layers-1
         self.layer_inputs = [X]
@@ -172,19 +131,6 @@ class FFNN:
         return new_delta
     
     def backward(self, y_true):
-        """
-        Backward propagation with improved numerical stability
-        
-        Parameters:
-        -----------
-        y_true : ndarray of shape (n_samples, n_outputs)
-            Target values
-            
-        Returns:
-        --------
-        float
-            Loss value
-        """
         y_pred = self.post_activations[-1]
         
         loss_value = self.loss.compute(y_true, y_pred)
@@ -229,14 +175,6 @@ class FFNN:
         return loss_value
     
     def clip_gradients(self, max_norm=1.0):
-        """
-        Clip gradients to prevent exploding gradients
-        
-        Parameters:
-        -----------
-        max_norm : float
-            Maximum L2 norm of the gradients
-        """
         total_norm_squared = 0
         for grad in self.weight_gradients:
             total_norm_squared += np.sum(np.square(grad))
@@ -251,16 +189,6 @@ class FFNN:
                 self.bias_gradients[i] *= clip_factor
 
     def update_weights(self, learning_rate, gradient_clip=1.0):
-        """
-        Update weights and biases using gradient descent with clipping
-
-        Parameters:
-        -----------
-        learning_rate : float
-            Learning rate for gradient descent
-        gradient_clip : float
-            Maximum gradient norm
-        """
         self.clip_gradients(max_norm=gradient_clip)
 
         for i in range(self.n_layers - 1):
@@ -277,46 +205,7 @@ class FFNN:
     def fit(self, X, y, batch_size=32, learning_rate=0.01, epochs=100, 
          verbose=1, validation_data=None, gradient_clip=0.0,
          learning_rate_decay=1.0, early_stopping_patience=None):
-        """
-        Train the network with tqdm progress bar
         
-        Parameters:
-        -----------
-        X : ndarray of shape (n_samples, n_features)
-            Training data
-            
-        y : ndarray of shape (n_samples, n_outputs) or (n_samples,)
-            Target values
-            
-        batch_size : int
-            Size of mini-batches
-            
-        learning_rate : float
-            Initial learning rate for gradient descent
-            
-        epochs : int
-            Number of training epochs
-            
-        verbose : int
-            Verbosity level (0=silent, 1=show progress)
-            
-        validation_data : tuple of (X_val, y_val) or None
-            Validation data
-            
-        gradient_clip : float
-            Maximum gradient norm (0.0 = no clipping)
-            
-        learning_rate_decay : float
-            Factor to multiply learning rate each epoch
-            
-        early_stopping_patience : int or None
-            Number of epochs with no improvement before stopping
-            
-        Returns:
-        --------
-        dict
-            Training history
-        """
         from tqdm import tqdm
         
         y = ensure_2d_y(y, self.activations[-1].name())
@@ -393,39 +282,10 @@ class FFNN:
         return history
     
     def predict(self, X):
-        """
-        Make predictions
-        
-        Parameters:
-        -----------
-        X : ndarray of shape (n_samples, n_features)
-            Input data
-            
-        Returns:
-        --------
-        ndarray
-            Predictions
-        """
         return self.forward(X)
             
     
     def evaluate(self, X, y):
-        """
-        Evaluate the model
-        
-        Parameters:
-        -----------
-        X : ndarray of shape (n_samples, n_features)
-            Input data
-            
-        y : ndarray of shape (n_samples, n_outputs) or (n_samples,)
-            Target values
-            
-        Returns:
-        --------
-        float
-            Loss value
-        """
         y = ensure_2d_y(y, self.activations[-1].name())
         
         y_pred = self.predict(X)
@@ -433,14 +293,6 @@ class FFNN:
         return val_loss
     
     def save(self, file_path):
-        """
-        Save model to file with detailed debugging
-
-        Parameters:
-        -----------
-        file_path : str
-            Path to save file
-        """
         try:
             print(f"Starting save process to {file_path}")
 
@@ -501,21 +353,7 @@ class FFNN:
             traceback.print_exc()
             raise
     
-    @classmethod
     def load(cls, file_path):
-        """
-        Load model from file with detailed debugging
-        
-        Parameters:
-        -----------
-        file_path : str
-            Path to model file
-            
-        Returns:
-        --------
-        FFNN
-            Loaded model
-        """
         try:
             print(f"Starting load process from {file_path}")
             
@@ -589,23 +427,14 @@ class FFNN:
             raise
     
     # Plotting (extra)
+    # Plot neural network
     def plot_model(self):
-            """
-            Visualize the network architecture with weights
-            """
             from .utils import plot_network_graph
             plot_network_graph(self.layer_sizes, self.weights, self.biases, 
                             title='Neural Network Architecture')
     
+    # Plot graf weight tiap layer
     def plot_weight(self, layers=None):
-            """
-            Plot weight distribution of specified layers
-            
-            Parameters:
-            -----------
-            layers : list of int or None
-                Indices of layers to plot. If None, plot all layers.
-            """
             if layers is None:
                 layers = list(range(len(self.weights)))
 
@@ -616,15 +445,8 @@ class FFNN:
             plot_weight_distribution(weights_to_plot, 
                                    title='Weight Distribution')
     
+    # Plot gradient distribution tiap layer
     def plot_gradient_distribution(self, layers=None):
-            """
-            Plot gradient distribution of specified layers
-            
-            Parameters:
-            -----------
-            layers : list of int or None
-                Indices of layers to plot. If None, plot all layers.
-            """
             if layers is None:
                 layers = list(range(len(self.weight_gradients)))
 

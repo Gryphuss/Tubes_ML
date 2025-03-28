@@ -110,14 +110,6 @@ def plot_weight_distribution(weights, title='Weight Distribution'):
 
 def plot_network_graph(layer_sizes, weights, biases, gradients=None, title='Neural Network Graph'):
     # Neural Network Graph maker
-    # Idenya gini
-    
-    # Args:
-    # - layer_sizes: list of integers, number of neurons in each layer
-    # - weights: list of weight matrices
-    # - biases: list of bias vectors
-    # - gradients: optional, list of weight gradient matrices
-    # - title: string, title of the plot
     G = nx.DiGraph()
     
     pos = {}

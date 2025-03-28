@@ -44,13 +44,7 @@ class NormalInitializer(Initializer):
         return f"Normal Initializer (mean={self.mean}, std={self.std})"
 
 
-class XavierInitializer(Initializer):
-    # KATANYA GINI
-    
-    # Weights are initialized with values drawn from a distribution with zero mean
-    # and variance 2/(fan_in + fan_out), where fan_in is the number of input units
-    # and fan_out is the number of output units.
-    
+class XavierInitializer(Initializer):   
     def __init__(self, seed=None):
         self.seed = seed
         self.rng = np.random.RandomState(seed)
@@ -65,11 +59,6 @@ class XavierInitializer(Initializer):
 
 
 class HeInitializer(Initializer):
-    # KATANYA GINI
-    
-    # Weights are initialized with values drawn from a normal distribution with 
-    # zero mean and variance 2/fan_in.
-    
     def __init__(self, seed=None):
         self.seed = seed
         self.rng = np.random.RandomState(seed)

@@ -16,7 +16,7 @@ class MSE(Loss):
         return np.mean(np.square(y_true - y_pred))
         
     def derivative(y_true, y_pred):
-        # Gradient descent, not negative (katanya)
+        # Gradient descent, not negative
         n = y_true.shape[0]
         return 2 * (y_pred - y_true) / n
     
@@ -26,7 +26,7 @@ class MSE(Loss):
 
 class BinaryCrossEntropy(Loss):
     def compute(y_real, y_pred):
-        # Clip prevent log(0) (katanya)
+        # Clip prevent log(0
         eps = 1e-15
         y_pred = np.clip(y_pred, eps, 1 - eps)
         return -np.mean(y_real * np.log(y_pred) + (1 - y_real) * np.log(1 - y_pred))
@@ -45,7 +45,7 @@ class BinaryCrossEntropy(Loss):
 
 class CategoricalCrossEntropy(Loss):
     def compute(y_true, y_pred):
-        # Clip prevent log(0) (katanya)
+        # Clip prevent log(0)
         eps = 1e-15
         y_pred = np.clip(y_pred, eps, 1.0)
         
