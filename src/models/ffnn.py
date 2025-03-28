@@ -213,8 +213,8 @@ class FFNN:
                 delta = self.normalizers[i].backward(delta)
             
             delta_clipped = np.clip(delta, -1e10, 1e10)
-            self.weight_gradients[i] = np.dot(self.post_activations[i].T, delta_clipped) / batch_size
-            self.bias_gradients[i] = np.mean(delta_clipped, axis=0)
+            self.weight_gradients[i] = np.dot(self.post_activations[i].T, delta_clipped)
+            self.bias_gradients[i] = np.sum(delta_clipped, axis=0)
     
             if self.regularizer:
                 reg_grad = self.regularizer.derivative([self.weights[i]])[0]
